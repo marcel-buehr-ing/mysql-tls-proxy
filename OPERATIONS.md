@@ -4,6 +4,17 @@ Keep entries newest first, factual and free of private operational details.
 Behavior and limitations belong in the README; publishing steps belong in
 `docs/RELEASING.md`.
 
+## 2026-11-06 - Validate native arm64 and prepare version 0.1.1
+
+- Participants: Marcel Buehring pushed the multi-platform workflow; Codex
+  verified both native jobs and prepared the local release tag `v0.1.1`.
+- Evidence: [run 42189986779](https://github.com/marcel-buehr-ing/mysql-tls-proxy/actions/runs/42189986779)
+  at `a2660fd` passed formatting, vet, race tests, image build and container
+  startup on amd64 and arm64; completed at 08:47:06 UTC.
+- Release gate: branch publication jobs were correctly skipped. The tagged
+  workflow must still publish both architecture images and their shared index.
+  Only the validation documentation changed after the successful native runs.
+
 ## 2026-11-06 - Add native arm64 builds and multi-platform publication
 
 - Participants: Marcel Buehring requested arm64 support; Codex prepared native

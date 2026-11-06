@@ -169,9 +169,11 @@ Container startup checks do not replace the documented database integration
 tests or validation in your own environment.
 
 Version `0.1.0` was published for Linux/amd64 and verified as anonymously
-accessible. Native arm64 CI and multi-platform publication are prepared for
-the next release; their first successful hosted run is still pending. The
-documented MariaDB integration tests were performed on amd64.
+accessible. Native amd64 and arm64 race tests, image builds and container
+startup checks passed for commit `a2660fd` on 2026-11-06; see the
+[multi-platform test run](https://github.com/marcel-buehr-ing/mysql-tls-proxy/actions/runs/42189986779).
+Shared image-index publication awaits the `v0.1.1` release run. The documented
+MariaDB integration tests were performed on amd64.
 
 Protocol reference: [MariaDB connection phase](https://mariadb.com/docs/server/reference/clientserver-protocol/1-connecting/connection).
 
