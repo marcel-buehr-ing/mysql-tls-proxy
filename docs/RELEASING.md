@@ -2,14 +2,17 @@
 
 The [GitHub Actions workflow](../.github/workflows/ci.yml) tests the source and
 builds the scratch image. A pushed `vMAJOR.MINOR.PATCH` tag publishes the image
-only after the checks pass. The initial architecture is Linux/amd64.
+only after the checks pass. Linux/amd64 uses `ubuntu-24.04`; Linux/arm64 uses
+`ubuntu-24.04-arm`. Each architecture runs Go race tests, vet, a native image
+build and container startup checks. No CPU emulation is required.
 
 ## One-time setup
 
 1. Create a public GitHub repository with `main` as its default branch and
    upload the reviewed source. Enable GitHub Actions if it is disabled.
 2. Confirm the first branch workflow succeeds. It runs formatting checks,
-   `go vet`, race tests, an image build and container startup checks.
+   `go vet`, race tests, an image build and container startup checks on both
+   architectures.
 3. After the first tagged image is published, open the package's settings and
    change its visibility to **Public**. A public repository does not by itself
    make a new container package public.
@@ -32,32 +35,42 @@ The project maintainer pushes the source and release tag:
 
 ```sh
 git push origin main
-git tag -a v0.1.0 -m 'Release 0.1.0'
-git push origin v0.1.0
+git tag -a v0.1.1 -m 'Release 0.1.1'
+git push origin v0.1.1
 ```
 
-Replace `0.1.0` with the intended version. Use a new version for each change;
+Replace `0.1.1` with the intended version. Use a new version for each change;
 do not move or reuse a published tag. Pre-release suffixes are not currently
 accepted by the workflow.
 
 The image name follows the repository, in lowercase:
 
 ```text
-ghcr.io/<owner>/<repository>:0.1.0
+ghcr.io/<owner>/<repository>:0.1.1
 ```
 
-Wait for both jobs to succeed. Check the published image, then pin its registry
-digest in deployments that require an exact artifact. For example, after
-substituting the actual owner and repository:
+The release jobs first publish `0.1.1-amd64` and `0.1.1-arm64`. A final job
+checks that both platforms are present and publishes the shared `0.1.1` image
+index only after both architecture jobs succeed. If a platform job fails, an
+individual architecture tag may exist, but the shared version is not released.
+
+Wait for all jobs, including **Publish multi-platform image**, to succeed.
+Check the published index, then pin its registry digest in deployments that
+require an exact artifact. For example, after substituting the actual owner
+and repository:
 
 ```sh
-release_image='ghcr.io/<owner>/<repository>:0.1.0'
+release_image='ghcr.io/<owner>/<repository>:0.1.1'
+docker buildx imagetools inspect "$release_image"
 docker pull "$release_image"
 docker run --rm --read-only --network none \
   "$release_image" --help
 ```
 
 Only explicit version tags are published; there is no moving `latest` tag.
+Use the shared version to let Docker or Kubernetes choose the host's
+architecture automatically. The already published `0.1.0` remains amd64-only;
+do not overwrite it to add another platform.
 The workflow does not create a GitHub Release or deploy to a database environment.
 Container startup checks verify packaging, not SQL compatibility or availability.
 Database integration testing and deployment review remain separate steps.

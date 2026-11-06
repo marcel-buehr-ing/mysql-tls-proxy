@@ -120,9 +120,11 @@ tests, an image build and container startup checks for pull requests and pushes
 to `main`. Checks also run when a version tag is pushed. Only a successful
 `vMAJOR.MINOR.PATCH` tag run can publish an image to GitHub Container Registry.
 
-The initial release target is Linux/amd64. A tag such as `v0.1.0` produces
-`ghcr.io/<owner>/<repository>:0.1.0`; the owner and repository are taken from
-the workflow context. Publication uses GitHub's temporary `GITHUB_TOKEN`.
+Linux/amd64 and Linux/arm64 are tested and built on native runners. A tag such
+as `v0.1.1` publishes architecture-specific images and then a shared
+`ghcr.io/<owner>/<repository>:0.1.1` image index after both succeed. Clients
+select the matching architecture automatically. The owner and repository are
+taken from the workflow context. Publication uses GitHub's temporary `GITHUB_TOKEN`.
 Pull requests and branch pushes do not publish images or deploy anything.
 
 See [Releasing](docs/RELEASING.md) for repository setup, public package visibility,
@@ -165,6 +167,11 @@ and container startup for commit `4bb6aa2` on 2026-11-06; see the
 [successful run](https://github.com/marcel-buehr-ing/mysql-tls-proxy/actions/runs/42185650421).
 Container startup checks do not replace the documented database integration
 tests or validation in your own environment.
+
+Version `0.1.0` was published for Linux/amd64 and verified as anonymously
+accessible. Native arm64 CI and multi-platform publication are prepared for
+the next release; their first successful hosted run is still pending. The
+documented MariaDB integration tests were performed on amd64.
 
 Protocol reference: [MariaDB connection phase](https://mariadb.com/docs/server/reference/clientserver-protocol/1-connecting/connection).
 

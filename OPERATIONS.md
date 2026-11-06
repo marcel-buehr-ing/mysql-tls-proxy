@@ -4,6 +4,28 @@ Keep entries newest first, factual and free of private operational details.
 Behavior and limitations belong in the README; publishing steps belong in
 `docs/RELEASING.md`.
 
+## 2026-11-06 - Add native arm64 builds and multi-platform publication
+
+- Participants: Marcel Buehring requested arm64 support; Codex prepared native
+  amd64/arm64 test and image-build matrices plus a gated image-index job.
+- Release design: both platforms must pass before publishing the shared version
+  tag. The existing builder digest supports both; proxy code and Dockerfile are
+  unchanged. The next release is intended as `0.1.1`, preserving `0.1.0`.
+- Boundary: native arm64 execution and image-index publication await the first
+  hosted run. The existing real-database integration evidence is amd64-only.
+- Local checks: workflow lint/shell syntax, platform/tag selection and index
+  completeness checks passed. Go 1.27.3 cross-compiled a static Linux/AArch64
+  executable successfully; no ARM execution is claimed from this x86_64 host.
+
+## 2026-11-06 - Verify version 0.1.0 publication
+
+- Participants: Marcel Buehring pushed the tag and made the package public;
+  Codex checked the public workflow and anonymous registry access.
+- Evidence: [release run 42188679820](https://github.com/marcel-buehr-ing/mysql-tls-proxy/actions/runs/42188679820)
+  succeeded. The public `0.1.0` manifest resolves to Linux/amd64, user
+  `65532:65532`, digest
+  `sha256:014e0cda18ddec098486f1e5f107d869f66ba1d12cea3a71fa05e048bb691bf2`.
+
 ## 2026-11-06 - Prepare version 0.1.0
 
 - Participants: Marcel Buehring approved image publication; Codex prepared
