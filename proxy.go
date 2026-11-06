@@ -25,27 +25,33 @@ type proxy struct {
 	frontendTLS      *tls.Config
 	backendTLS       *tls.Config
 	handshakeTimeout time.Duration
+	shutdownTimeout  time.Duration
 	maxConnections   int
 	logger           *slog.Logger
 }
 
 func (p *proxy) serve(ctx context.Context, listener net.Listener) error {
-	ctx, cancel := context.WithCancel(ctx)
+	// Stopping the listener must not cancel already accepted sessions. Their
+	// context is cancelled only after the drain deadline or an accept failure.
+	sessions, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancel()
 	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
 	defer stop()
 	defer listener.Close()
 	var workers sync.WaitGroup
-	defer workers.Wait()
 	slots := make(chan struct{}, p.maxConnections)
+	var acceptErr error
 	for {
 		client, err := listener.Accept()
 		if err != nil {
-			cancel()
-			if errors.Is(err, net.ErrClosed) {
-				return nil
+			if !errors.Is(err, net.ErrClosed) {
+				acceptErr = fmt.Errorf("accept: %w", err)
 			}
-			return fmt.Errorf("accept: %w", err)
+			break
+		}
+		if ctx.Err() != nil {
+			_ = client.Close()
+			break
 		}
 		select {
 		case slots <- struct{}{}:
@@ -57,12 +63,28 @@ func (p *proxy) serve(ctx context.Context, listener net.Listener) error {
 		go func() {
 			defer workers.Done()
 			defer func() { <-slots }()
-			if err := p.handle(ctx, client); err != nil && ctx.Err() == nil {
+			if err := p.handle(sessions, client); err != nil && sessions.Err() == nil {
 				// Never log packet contents, usernames, passwords or SQL text.
 				p.logger.Warn("connection closed", "reason", err)
 			}
 		}()
 	}
+	done := make(chan struct{})
+	go func() { workers.Wait(); close(done) }()
+	if ctx.Err() != nil && p.shutdownTimeout > 0 {
+		p.logger.Info("draining connections", "timeout", p.shutdownTimeout)
+		timer := time.NewTimer(p.shutdownTimeout)
+		defer timer.Stop()
+		select {
+		case <-done:
+			return acceptErr
+		case <-timer.C:
+			p.logger.Info("drain deadline reached; closing remaining connections")
+		}
+	}
+	cancel()
+	<-done
+	return acceptErr
 }
 
 func (p *proxy) handle(ctx context.Context, client net.Conn) error {

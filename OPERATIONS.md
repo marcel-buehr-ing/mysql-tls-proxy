@@ -4,6 +4,39 @@ Keep entries newest first, factual and free of private operational details.
 Behavior and limitations belong in the README; publishing steps belong in
 `docs/RELEASING.md`.
 
+## 2026-11-06 - Add certificate reload and bounded connection draining
+
+- Participants: Marcel Buehring approved automatic frontend certificate reload
+  and a 60-second drain; Codex implemented and tested both with standard-library
+  Go. Authentication forwarding and the default connection limit are unchanged.
+- Behavior: validated certificate/key replacements affect new handshakes;
+  invalid replacements retain the previous valid certificate. Shutdown stops
+  acceptance and waits for sessions to close until the configured deadline.
+  Runtime configuration and limits are documented in the README.
+- Evidence: Go 1.27.3 race tests and vet passed. An isolated MariaDB 11.4.13
+  repeated the existing SQL/dump/restore/password tests, preserved one live
+  transaction across certificate rotation and committed it while draining.
+  A second transaction rolled back after forced deadline closure. No shared
+  database or deployment was used; all local test processes were stopped.
+- Packaging: CGO-disabled tests and static Linux/amd64 and Linux/arm64 builds
+  passed; Docker build inputs include all new source/test files. No local
+  container engine is available; native image execution remains a CI check.
+- Release gate: proposed next version `0.2.0`; hosted native image checks and
+  image publication remain pending. No release tag or publication performed.
+
+## 2026-11-06 - Verify public multi-platform version 0.1.1
+
+- Participants: Marcel Buehring pushed `main` and `v0.1.1`; Codex followed the
+  release and verified public registry metadata without account credentials.
+- Evidence: [run 42190419001](https://github.com/marcel-buehr-ing/mysql-tls-proxy/actions/runs/42190419001)
+  passed native checks and publication for amd64/arm64, then created their
+  shared index; completed at 08:51:39 UTC.
+- Artifact: `ghcr.io/marcel-buehr-ing/mysql-tls-proxy:0.1.1`, index digest
+  `sha256:59fa4f45789b9e17838fce70a68b30ac3d4eca50f63e5d70fd065c335fb82893`.
+  Both child manifests/configurations match their declared platform, revision
+  `0317c31`, version `0.1.1`, user `65532:65532` and exposed port `3306/tcp`.
+  This is publication acceptance; no database deployment was performed.
+
 ## 2026-11-06 - Validate native arm64 and prepare version 0.1.1
 
 - Participants: Marcel Buehring pushed the multi-platform workflow; Codex

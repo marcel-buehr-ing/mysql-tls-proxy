@@ -78,6 +78,39 @@ The defaults are 100 simultaneous connections and a ten-second deadline for
 connection/TLS setup. `--max-connections` and `--handshake-timeout` adjust them.
 Packet contents, usernames, passwords and SQL are never logged.
 
+## Certificate renewal and shutdown
+
+The frontend certificate and key are checked every 30 seconds; adjust this with
+`--cert-reload-interval`. Changed files are loaded together and published only
+after the key matches and the leaf certificate is currently valid. Malformed,
+missing, mismatched, expired or not-yet-valid replacements are logged and rejected.
+The last accepted certificate remains active while valid. If it expires before
+a usable replacement arrives, new TLS handshakes fail. Existing sessions are
+not interrupted by a reload. Client CA/hostname verification remains essential;
+the proxy cannot establish whether a frontend certificate is trusted by clients.
+
+The paths are reopened on each check, including after atomic symlink changes.
+For Kubernetes, mount the Secret directory without `subPath`, so projected file
+updates reach the process. Detection happens after the files reach the volume,
+not immediately when cert-manager updates the Secret. Prefer atomic directory
+replacement when managing the files yourself. Frontend session resumption is
+disabled so every new connection checks the current certificate. Backend CA
+trust is still read at startup; restart to change it.
+
+On SIGINT/SIGTERM, the listener closes immediately and accepted connections can
+continue for up to 60 seconds. `--shutdown-timeout` changes this limit; `0` closes
+immediately. The process exits early when the last connection closes, otherwise
+it closes the remaining connections at the deadline. It does not parse SQL or
+detect transaction boundaries: a persistent pool can hold a connection until
+the deadline. Clients must handle connection loss and uncertain commit outcomes;
+the proxy never reconnects or replays a query.
+
+Give the container a termination grace period longer than the shutdown timeout
+(for example 75 seconds for a 60-second drain), including time used by any stop
+hooks. A crash or forced kill cannot drain connections. TCP-only periodic probes
+open incomplete database handshakes; use application-aware checks when validating
+the complete SQL path. There is no separate health or metrics listener.
+
 ## Minimal container image
 
 The Dockerfile tests and builds a static binary with `CGO_ENABLED=0`, then copies
@@ -152,11 +185,19 @@ The real-server test used `mysql_native_password`. Other authentication plugins,
 backend accounts requiring client certificates and MariaDB's automatic trust
 fallback are outside the tested scope. Use explicit CA/hostname verification.
 
-Certificates and backend trust are read at startup. Restart to reload them.
-SIGINT/SIGTERM and either peer disconnecting close both connections; there is
-no graceful draining or transparent reconnect. Clients must handle connection
-loss and uncertain transaction outcomes. Existing authenticated sessions follow
-the database's normal password-change behavior.
+Certificate reload and bounded shutdown were also tested with the isolated
+MariaDB 11.4.13 server on 2026-11-06 using Go 1.27.3. An open SQL transaction
+retained its connection across certificate replacement and rejection of a
+mismatched update, then committed during SIGTERM draining. A second transaction
+was rolled back when the configured drain deadline closed its connection.
+The previous SQL, 20 MB dump/restore and password-change tests passed again.
+Automated race tests additionally cover atomic Secret-style symlink replacement,
+invalid/expired/future certificates, continued streams during reload, early
+shutdown completion and forced closure at the deadline. These changes await
+the next image release and deployment acceptance; no capacity benchmark is claimed.
+
+Either peer disconnecting ends both connections. Existing authenticated sessions
+follow the database's normal password-change behavior.
 
 The initial local validation did not run a container engine. A separate Go
 1.27.3 build with `CGO_ENABLED=0` and the Dockerfile's linker flags passed the
@@ -172,8 +213,11 @@ Version `0.1.0` was published for Linux/amd64 and verified as anonymously
 accessible. Native amd64 and arm64 race tests, image builds and container
 startup checks passed for commit `a2660fd` on 2026-11-06; see the
 [multi-platform test run](https://github.com/marcel-buehr-ing/mysql-tls-proxy/actions/runs/42189986779).
-Shared image-index publication awaits the `v0.1.1` release run. The documented
-MariaDB integration tests were performed on amd64.
+Version `0.1.1` was then published for both platforms by the
+[successful release run](https://github.com/marcel-buehr-ing/mysql-tls-proxy/actions/runs/42190419001).
+Anonymous registry access verified both architectures, the release revision,
+port 3306 and the non-root user. The documented MariaDB integration tests were
+performed on amd64.
 
 Protocol reference: [MariaDB connection phase](https://mariadb.com/docs/server/reference/clientserver-protocol/1-connecting/connection).
 

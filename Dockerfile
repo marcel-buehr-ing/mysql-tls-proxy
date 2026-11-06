@@ -1,6 +1,6 @@
 FROM golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
 WORKDIR /src
-COPY go.mod main.go proxy.go proxy_test.go LICENSE ./
+COPY go.mod main.go proxy.go proxy_test.go certificate.go certificate_test.go shutdown_test.go LICENSE ./
 ENV CGO_ENABLED=0
 RUN go test ./... && \
     go build -trimpath -ldflags="-s -w" -o /out/mysql-tls-proxy .

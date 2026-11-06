@@ -38,6 +38,8 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	serverName := flags.String("backend-server-name", "", "backend certificate name; defaults to backend host")
 	timeout := flags.Duration("handshake-timeout", 10*time.Second, "total connection and TLS setup timeout")
 	limit := flags.Int("max-connections", 100, "maximum simultaneous client connections")
+	reloadInterval := flags.Duration("cert-reload-interval", 30*time.Second, "frontend certificate/key reload interval")
+	shutdownTimeout := flags.Duration("shutdown-timeout", 60*time.Second, "time to drain existing connections on shutdown; 0 closes immediately")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: mysql-tls-proxy [options]")
 		fmt.Fprintln(stderr, "\nTLS-only MySQL/MariaDB bridge. Authentication stays with the backend.")
@@ -59,8 +61,11 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	if *backend == "" || *certPath == "" || *keyPath == "" || *caPath == "" {
 		return errors.New("--backend, --cert, --key and --backend-ca are required")
 	}
-	if *timeout <= 0 || *limit <= 0 {
-		return errors.New("--handshake-timeout and --max-connections must be positive")
+	if *timeout <= 0 || *limit <= 0 || *reloadInterval <= 0 {
+		return errors.New("--handshake-timeout, --max-connections and --cert-reload-interval must be positive")
+	}
+	if *shutdownTimeout < 0 {
+		return errors.New("--shutdown-timeout must not be negative")
 	}
 	host, port, err := net.SplitHostPort(*backend)
 	if err != nil || host == "" {
@@ -73,9 +78,9 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	if *serverName == "" {
 		*serverName = host
 	}
-	cert, err := tls.LoadX509KeyPair(*certPath, *keyPath)
+	certificates, err := newCertificateReloader(*certPath, *keyPath)
 	if err != nil {
-		return fmt.Errorf("load frontend certificate: %w", err)
+		return err
 	}
 	ca, err := os.ReadFile(*caPath)
 	if err != nil {
@@ -89,8 +94,11 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	p := proxy{
 		backend: *backend,
 		frontendTLS: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: certificates.getCertificate,
+			// Require a fresh certificate check on every new connection, including
+			// clients that would otherwise resume a session with an older identity.
+			SessionTicketsDisabled: true,
 		},
 		backendTLS: &tls.Config{
 			MinVersion: tls.VersionTLS12,
@@ -98,6 +106,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 			ServerName: *serverName,
 		},
 		handshakeTimeout: *timeout,
+		shutdownTimeout:  *shutdownTimeout,
 		maxConnections:   *limit,
 		logger:           logger,
 	}
@@ -105,6 +114,13 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
+	reloadCtx, stopReload := context.WithCancel(ctx)
+	reloadDone := make(chan struct{})
+	go func() {
+		defer close(reloadDone)
+		certificates.watch(reloadCtx, *reloadInterval, logger)
+	}()
+	defer func() { stopReload(); <-reloadDone }()
 	logger.Info("listening", "address", listener.Addr().String(), "backend", *backend, "tls", "required on both connections")
 	err = p.serve(ctx, listener)
 	logger.Info("stopped")

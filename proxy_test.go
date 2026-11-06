@@ -21,17 +21,22 @@ import (
 
 func testIdentity(t *testing.T, name string, expired bool) (tls.Certificate, *x509.CertPool) {
 	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	until := time.Now().Add(time.Hour)
 	if expired {
 		until = time.Now().Add(-time.Hour)
 	}
+	return testIdentityValidity(t, name, time.Now().Add(-2*time.Hour), until)
+}
+
+func testIdentityValidity(t *testing.T, name string, from, until time.Time) (tls.Certificate, *x509.CertPool) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: name},
-		DNSNames: []string{name}, NotBefore: time.Now().Add(-2 * time.Hour), NotAfter: until,
+		DNSNames: []string{name}, NotBefore: from, NotAfter: until,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true, IsCA: true,
@@ -119,25 +124,8 @@ func testProxy(t *testing.T, backend string, backendTLS *tls.Config, timeout tim
 		handshakeTimeout: timeout, maxConnections: 2,
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- p.serve(ctx, l) }()
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Error(err)
-			}
-		case <-time.After(3 * time.Second):
-			t.Error("proxy did not stop")
-		}
-	})
-	return l.Addr().String(), &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: "proxy.test"}, cancel
+	address, cancel, _ := startProxy(t, p)
+	return address, &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: "proxy.test"}, cancel
 }
 
 func connectTLS(t *testing.T, address string, config *tls.Config) *tls.Conn {
@@ -346,6 +334,16 @@ func TestCLIRejectsIncompleteConfiguration(t *testing.T) {
 	var help bytes.Buffer
 	if err := run(context.Background(), []string{"--help"}, &help); err != nil || !strings.Contains(help.String(), "TLS-only") {
 		t.Fatal("help failed", err)
+	}
+}
+
+func TestCLIRejectsInvalidLifecycleOptions(t *testing.T) {
+	base := []string{"--backend", "localhost:3306", "--cert", "unused.crt", "--key", "unused.key", "--backend-ca", "unused-ca.crt"}
+	for _, option := range []string{"--cert-reload-interval=0", "--cert-reload-interval=-1s", "--shutdown-timeout=-1s"} {
+		err := run(context.Background(), append(base, option), io.Discard)
+		if err == nil || !strings.Contains(err.Error(), strings.Split(option, "=")[0]) {
+			t.Fatalf("invalid lifecycle option not rejected: %s: %v", option, err)
+		}
 	}
 }
 

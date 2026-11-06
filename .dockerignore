@@ -4,4 +4,7 @@
 !main.go
 !proxy.go
 !proxy_test.go
+!certificate.go
+!certificate_test.go
+!shutdown_test.go
 !LICENSE
