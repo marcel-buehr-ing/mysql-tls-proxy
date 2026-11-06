@@ -1,0 +1,9 @@
+/mysql-tls-proxy
+/coverage.out
+/.local/
+/.direnv/
+/.handover/
+.env
+*.key
+*.pem
+*.crt

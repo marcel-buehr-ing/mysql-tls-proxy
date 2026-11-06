@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!go.mod
+!main.go
+!proxy.go
+!proxy_test.go
+!LICENSE
