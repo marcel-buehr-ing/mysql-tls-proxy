@@ -160,9 +160,11 @@ The initial local validation did not run a container engine. A separate Go
 1.27.3 build with `CGO_ENABLED=0` and the Dockerfile's linker flags passed the
 automated tests; ELF inspection confirmed no dynamic loader or shared-library
 dependencies. Its Linux/amd64 binary is approximately 6.2 MB and its `--help`
-command runs successfully. The first GitHub Actions run must still verify the
-container build and startup. Container startup checks do not replace the
-documented database integration tests or validation in your own environment.
+command runs successfully. GitHub Actions verified the Linux/amd64 image build
+and container startup for commit `4bb6aa2` on 2026-11-06; see the
+[successful run](https://github.com/marcel-buehr-ing/mysql-tls-proxy/actions/runs/42185650421).
+Container startup checks do not replace the documented database integration
+tests or validation in your own environment.
 
 Protocol reference: [MariaDB connection phase](https://mariadb.com/docs/server/reference/clientserver-protocol/1-connecting/connection).
 
